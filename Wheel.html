@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>البث المباشر للسحب | أعلام السنة</title>
+    <style>
+        :root { 
+            --primary: #2A3F46; 
+            --bg: #F3EFE9; 
+            --accent: #C5B358; 
+            --secondary: #7D7168;
+            --white: #FFFFFF;
+        }
+
+        body { 
+            background: var(--bg); 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            height: 100vh; 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            overflow: hidden; 
+        }
+
+        /* شريط الفائزين العلوي */
+        .winners-bar { 
+            width: 100%; 
+            background: var(--primary); 
+            color: white; 
+            padding: 10px 0; 
+            display: flex; 
+            gap: 10px; 
+            overflow-x: auto; 
+            min-height: 45px; 
+            z-index: 50;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .tag { 
+            background: rgba(255,255,255,0.1); 
+            padding: 5px 15px; 
+            border-radius: 20px; 
+            border: 1px solid var(--accent); 
+            white-space: nowrap; 
+            margin: 0 5px;
+            font-size: 14px;
+            display: inline-block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        header { 
+            width: 90%; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: clamp(10px, 2vh, 20px) 0;
+            z-index: 10;
+        }
+
+        .logo { height: clamp(45px, 7vh, 80px); max-width: 40%; object-fit: contain; }
+
+        main {
+            flex: 1;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            width: 100%;
+            position: relative;
+        }
+
+        .wheel-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas { 
+            width: min(500px, 58vh, 85vw); 
+            height: min(500px, 58vh, 85vw); 
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.15)); 
+        }
+
+        #pointer { 
+            position: absolute; 
+            top: -20px; 
+            width: clamp(30px, 5vh, 45px); 
+            z-index: 40; 
+        }
+
+        #announcement { 
+            margin-top: 15px; 
+            font-size: clamp(18px, 3.5vh, 28px); 
+            font-weight: bold; 
+            color: var(--primary); 
+            text-align: center; 
+            padding: 0 10px;
+            min-height: 70px;
+        }
+
+        /* زر إعادة العرض المتجاوب */
+        #replayBtn {
+            display: none;
+            background: var(--primary);
+            color: var(--white);
+            border: 2px solid var(--accent);
+            padding: 12px 35px;
+            border-radius: 50px;
+            font-size: 18px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 10px;
+            transition: 0.3s;
+            box-shadow: 0 4px 15px rgba(42, 63, 70, 0.3);
+        }
+
+        #replayBtn:hover {
+            transform: scale(1.05);
+            background: #1e2e33;
+        }
+
+        footer { 
+            width: 100%; 
+            display: flex; 
+            justify-content: center; 
+            gap: 30px; 
+            padding: 10px 0; 
+            background: rgba(255,255,255,0.2); 
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .sponsor { height: clamp(50px, 10vh, 90px); max-width: 40%; object-fit: contain; }
+    </style>
+</head>
+<body>
+
+    <div class="winners-bar" id="log">
+        <span style="margin-right: 20px; align-self: center; font-size: 13px; font-weight: bold;">🏆 سجل الفائزين:</span>
+    </div>
+
+    <header>
+        <img src="images/logo-sunnan.jpg" class="logo" alt="سنن">
+        <img src="images/logo-contest.png" class="logo" alt="المسابقة">
+    </header>
+
+    <main>
+        <div class="wheel-box">
+            <img src="https://cdn-icons-png.flaticon.com/512/8154/8154865.png" id="pointer">
+            <canvas id="wheelCanvas" width="1000" height="1000"></canvas>
+        </div>
+        <div id="announcement">بانتظار بدء السحب المباشر...</div>
+        <button id="replayBtn" onclick="startReplay()">🎡 إعادة عرض السحب المباشر</button>
+    </main>
+
+    <footer>
+        <img src="images/sponsor1.png" class="sponsor" alt="رياش">
+        <img src="images/sponsor2.png" class="sponsor" alt="نسيل">
+    </footer>
+
+    <script>
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyvneLwdPpyxql5U5v5981SkdGqHrRrh9141U1hyHCfUBxgXoFmSndtUURFTUxdlUQ/exec";
+        
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const bc = new BroadcastChannel('sunnan_channel');
+        
+        let initialNames = [], initialPrizes = [];
+        let names = [], prizes = [], pastWinners = [];
+        let nRot = 0, pRot = 0, isSpinning = false;
+
+        function draw() {
+            ctx.clearRect(0,0,1000,1000);
+            if (names.length > 0) drawW(names, 480, 320, nRot, ["#2A3F46", "#7D7168"], true);
+            if (prizes.length > 0) drawW(prizes, 310, 10, pRot, ["#C5B358", "#F3EFE9"], false);
+        }
+
+        function drawW(items, outR, inR, rot, colors, isN) {
+            const cx = 500, cy = 500;
+            const slice = (Math.PI*2)/items.length;
+            items.forEach((t, i) => {
+                const ang = i*slice + rot;
+                ctx.save(); ctx.beginPath(); ctx.fillStyle = colors[i%colors.length];
+                ctx.moveTo(cx, cy); ctx.arc(cx, cy, outR, ang, ang+slice); ctx.fill();
+                ctx.translate(cx, cy); ctx.rotate(ang + slice/2);
+                ctx.fillStyle = (colors[i%colors.length]==="#F3EFE9")?"#2A3F46":"white";
+                ctx.textAlign = "right";
+                ctx.font = isN ? "bold 20px Arial" : "bold 28px Arial";
+                ctx.fillText(t.length > 18 ? t.substring(0, 16) + '..' : t, outR - 40, 10);
+                ctx.restore();
+            });
+        }
+
+        // مزامنة البيانات والتحقق من وجود سحب سابق
+        async function syncData() {
+            try {
+                const [qRes, pRes, wRes] = await Promise.all([
+                    fetch(`${SCRIPT_URL}?action=getQualified`).then(r => r.json()),
+                    fetch(`${SCRIPT_URL}?action=getPrizes`).then(r => r.json()),
+                    // نفترض وجود أكشن لجلب الفائزين المسجلين في الشيت
+                    fetch(`${SCRIPT_URL}?action=getWinnersList`).then(r => r.json()).catch(() => [])
+                ]);
+                
+                initialNames = [...qRes, ...wRes.map(w => w.name)];
+                initialPrizes = [...pRes, ...wRes.map(w => w.prize)];
+                pastWinners = wRes;
+
+                // إذا وجدنا فائزين سابقين ولم نكن في "بث مباشر" الآن، نظهر زر الإعادة
+                if (pastWinners.length > 0) {
+                    document.getElementById('replayBtn').style.display = 'block';
+                    document.getElementById('announcement').innerText = "تم السحب مسبقاً، يمكنك مشاهدة الإعادة";
+                }
+
+                names = [...initialNames];
+                prizes = [...initialPrizes];
+                draw();
+            } catch (e) { console.log("خطأ في المزامنة"); }
+        }
+
+        async function startReplay() {
+            document.getElementById('replayBtn').style.display = 'none';
+            document.getElementById('log').innerHTML = '<span style="margin-right: 20px; align-self: center; font-size: 13px; font-weight: bold;">🏆 سجل الفائزين:</span>';
+            
+            // إعادة تصفير العجلة للحالة الأولى
+            names = [...initialNames];
+            prizes = [...initialPrizes];
+            
+            for (let winnerObj of pastWinners) {
+                const wIdx = names.indexOf(winnerObj.name);
+                const pIdx = prizes.indexOf(winnerObj.prize);
+                
+                if (wIdx !== -1 && pIdx !== -1) {
+                    await performSpin({ winner: winnerObj.name, prize: winnerObj.prize, wIdx, pIdx });
+                    // انتظار قصير بين كل سحب وسحب
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
+            document.getElementById('announcement').innerText = "هذه كانت نتائج سحب اليوم، نبارك للفائزين!";
+        }
+
+        function performSpin(data) {
+            return new Promise((resolve) => {
+                isSpinning = true;
+                const start = performance.now();
+                const duration = 5000; // تقليل مدة الدوران في الإعادة قليلاً للسرعة
+                const nTarget = (Math.PI*20) + ((names.length-data.wIdx)*(Math.PI*2/names.length)) - (Math.PI/2) - (Math.PI/names.length);
+                const pTarget = -(Math.PI*15) - ((prizes.length-data.pIdx)*(Math.PI*2/prizes.length)) + (Math.PI/2) + (Math.PI/prizes.length);
+
+                function anim(now) {
+                    const p = Math.min((now-start)/duration, 1);
+                    const ease = 1 - Math.pow(1-p, 4);
+                    nRot = ease * nTarget; pRot = ease * pTarget;
+                    draw();
+                    if(p<1) requestAnimationFrame(anim);
+                    else {
+                        isSpinning = false;
+                        document.getElementById('announcement').innerHTML = `🎉 الفائز: <span style="color:#C5B358">${data.winner}</span> <br> الجائزة: ${data.prize}`;
+                        addWinnerToBar(data.winner, data.prize);
+                        names.splice(data.wIdx, 1); prizes.splice(data.pIdx, 1);
+                        setTimeout(() => { draw(); resolve(); }, 800);
+                    }
+                }
+                requestAnimationFrame(anim);
+            });
+        }
+
+        function addWinnerToBar(name, prize) {
+            const tag = document.createElement('div'); 
+            tag.className='tag';
+            tag.innerHTML = `🏁 <b>${name}</b> | ${prize}`;
+            document.getElementById('log').prepend(tag);
+        }
+
+        bc.onmessage = (e) => {
+            if(e.data.type === 'INIT') { names = e.data.qualified; prizes = e.data.prizes; draw(); }
+            if(e.data.type === 'SPIN' && !isSpinning) {
+                document.getElementById('replayBtn').style.display = 'none';
+                performSpin(e.data);
+            }
+        };
+
+        window.onload = () => {
+            syncData();
+        };
+        draw();
+    </script>
+</body>
+</html>
